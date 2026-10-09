@@ -35,38 +35,57 @@ if success and data then
     flatten(data, offsets)
 end
 
--- === AUTO SKILL ===
+-- === AUTO SKILL — DYNAMIC TARGET DETECTION ===
 task.spawn(function()
     local absrot = offsets.AbsoluteRotation
     if not absrot then return end
     local LocalPlayer = game.Players.LocalPlayer
     local pressed = false
+    local targetAngle = nil  -- Will store where the zone actually is
+
     while true do
-        task.wait(_G.BeastESPConfig.AutoSkillCheckRate or 0.016)
+        task.wait(_G.BeastESPConfig.AutoSkillCheckRate or 0.01)
+
         if not _G.BeastESPConfig.AutoSkillEnabled then
             pressed = false
+            targetAngle = nil
             continue
         end
+
         local Gui = LocalPlayer:FindFirstChild("PlayerGui")
-        if not Gui then pressed = false; continue end
+        if not Gui then pressed = false; targetAngle = nil; continue end
+
         local tc = Gui:FindFirstChild("ScreenGui", true) and Gui.ScreenGui:FindFirstChild("TimingCircle", true)
-        if not tc then pressed = false; continue end
+        if not tc then pressed = false; targetAngle = nil; continue end
+
         local base = tc:FindFirstChild("TimingBase")
         local pin = tc:FindFirstChild("TimingPin")
-        if not base or not pin then pressed = false; continue end
+        if not base or not pin then pressed = false; targetAngle = nil; continue end
+
         local baseRot = memory.readf32(base, absrot)
         local pinRot = memory.readf32(pin, absrot)
+
         if baseRot > 0 then
-            local diff = pinRot - baseRot
-            local tol = _G.BeastESPConfig.AutoSkillTolerance or 5
-            if diff >= -tol and diff <= tol and not pressed then
+            -- When the circle starts, LOCK ONTO where the target zone is
+            if not targetAngle then
+                targetAngle = baseRot  -- This is where the zone starts
+            end
+
+            -- Calculate how far pin is from THAT target zone
+            local diff = math.abs(pinRot - targetAngle)
+            local tol = _G.BeastESPConfig.AutoSkillTolerance or 3
+
+            -- Hit when pin reaches THAT specific zone
+            if diff <= tol and not pressed then
                 keypress(0x45)
                 task.wait(_G.BeastESPConfig.AutoSkillPressTime or 0.05)
                 keyrelease(0x45)
                 pressed = true
             end
         else
+            -- Reset for next round
             pressed = false
+            targetAngle = nil
         end
     end
 end)
