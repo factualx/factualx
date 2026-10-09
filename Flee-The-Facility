@@ -1,0 +1,199 @@
+_G.BeastESPConfig = _G.BeastESPConfig or {
+    Enabled         = true,
+    MaxDistance     = 300,
+    CheckRate       = 0.1,
+    ScreenCheckRate = 2.0,
+    TextSize        = 14,
+    TextOffsetY     = 16,
+    ShowDistance    = true,
+    SkipLocalPlayer = true,
+    BeastColor        = Color3.fromRGB(255, 50,  50),
+    HumanColor        = Color3.fromRGB(100, 150, 255),
+    ScreenOKColor     = Color3.fromRGB(50,  150, 255),
+    ScreenHackedColor = Color3.fromRGB(50,  255, 100),
+    ToggleKey       = "X",
+    ScreenNormal    = {r = 13, g = 105, b = 172},
+    ScreenTolerance = 5,
+}
+
+local CONFIG     = _G.BeastESPConfig
+local Camera     = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local Players    = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local V2  = Vector2.new
+local W2S = function(pos) return Camera:WorldToScreenPoint(pos) end
+
+local CACHE = {
+    BeastText            = "Beast",
+    HumanText            = "Human",
+    ScreenOKText         = "OK",
+    ScreenHackedText     = "HACKED",
+    BeastPowers          = "BeastPowers",
+    PowerProgressPercent = "PowerProgressPercent",
+    HumanoidRootPart     = "HumanoidRootPart",
+    ComputerTable        = "ComputerTable",
+    Screen               = "Screen",
+}
+
+local function CheckBeastPowers(name)
+    local model = workspace:FindFirstChild(name)
+    if not model then return false end
+    local folder = model:FindFirstChild(CACHE.BeastPowers)
+    if not folder then return false end
+    return folder:FindFirstChild(CACHE.PowerProgressPercent) ~= nil
+end
+
+local PlayerCache = {}
+local BeastCache  = {}
+
+task.spawn(function()
+    local lastUpdate = 0
+    while true do
+        local dt = task.wait()
+        lastUpdate += dt
+        if lastUpdate < CONFIG.CheckRate then continue end
+        lastUpdate = 0
+
+        if CONFIG.Enabled then
+            local fresh = {}
+            for _, obj in ipairs(workspace:GetChildren()) do
+                if obj.ClassName == "Model" then
+                    if CONFIG.SkipLocalPlayer and obj.Name == LocalPlayer.Name then continue end
+                    local hrp = obj:FindFirstChild(CACHE.HumanoidRootPart)
+                    local humanoid = obj:FindFirstChildOfClass("Humanoid")
+                    if hrp and humanoid then
+                        local name = obj.Name
+                        fresh[name] = {
+                            HRP     = hrp,
+                            Alive   = humanoid.Health > 0,
+                            IsBeast = CheckBeastPowers(name)
+                        }
+                        BeastCache[name] = fresh[name].IsBeast
+                    end
+                end
+            end
+            for n in pairs(PlayerCache) do if not fresh[n] then BeastCache[n] = nil end end
+            PlayerCache = fresh
+        end
+    end
+end)
+
+local ScreensCache = { Screens = {}, LastCheck = 0 }
+
+local function ColoresIguales(c1, c2, tol)
+    if not c1 or not c2 then return false end
+    return math.abs(c1.r - c2.r) <= tol
+       and math.abs(c1.g - c2.g) <= tol
+       and math.abs(c1.b - c2.b) <= tol
+end
+
+local function GetScreenColor(screen)
+    local ok, desc = pcall(function() return screen.Description end)
+    if not ok or not desc or type(desc) ~= "table" then return nil end
+    local cv = desc.Color3
+    if not cv or typeof(cv) ~= "vector" then return nil end
+    return { r = math.floor(cv.X), g = math.floor(cv.Y), b = math.floor(cv.Z) }
+end
+
+local function UpdateScreensCache()
+    local now = tick()
+    if now - ScreensCache.LastCheck < (CONFIG.ScreenCheckRate or 2.0) then return end
+    ScreensCache.LastCheck = now
+    table.clear(ScreensCache.Screens)
+
+    local normal = CONFIG.ScreenNormal or {r=13,g=105,b=172}
+    local tol    = CONFIG.ScreenTolerance or 5
+
+    local function ScanScreen(ct)
+        local s = ct:FindFirstChild(CACHE.Screen)
+        if not s then return end
+        local c = GetScreenColor(s)
+        if c then table.insert(ScreensCache.Screens, { Part = s, IsHacked = not ColoresIguales(c, normal, tol) }) end
+    end
+
+    for _, m in ipairs(workspace:GetChildren()) do
+        if m:FindFirstChild(CACHE.ComputerTable) then ScanScreen(m[CACHE.ComputerTable]) end
+        for _, c in ipairs(m:GetChildren()) do if c.Name == CACHE.ComputerTable then ScanScreen(c) end end
+    end
+end
+
+task.spawn(function()
+    local last = 0
+    while true do
+        local dt = task.wait()
+        last += dt
+        if last < CONFIG.ScreenCheckRate then continue end
+        last = 0
+        if CONFIG.Enabled then UpdateScreensCache() end
+    end
+end)
+
+local function DistanceSquared(p1, p2)
+    local dx, dy, dz = p1.X-p2.X, p1.Y-p2.Y, p1.Z-p2.Z
+    return dx*dx + dy*dy + dz*dz
+end
+
+local function ToggleESP()
+    CONFIG.Enabled = not CONFIG.Enabled
+    print("[Beast ESP] "..(CONFIG.Enabled and "ON — go get 'em :)" or "OFF — rest up :)"))
+end
+
+task.spawn(function()
+    while true do
+        for _, k in ipairs(getpressedkeys()) do
+            if k == (CONFIG.ToggleKey or "X") then ToggleESP() task.wait(0.3) break end
+        end
+        task.wait(0.1)
+    end
+end)
+
+local render = RunService.Render:Connect(function()
+    if not CONFIG.Enabled then return end
+    local camPos = Camera.Position
+    local maxSq  = (CONFIG.MaxDistance or 300)^2
+    local tSize  = CONFIG.TextSize or 14
+    local yOff   = CONFIG.TextOffsetY or 16
+
+    for _, d in pairs(PlayerCache) do
+        if not d.Alive then continue end
+        local hrpPos = d.HRP.Position
+        local distSq = DistanceSquared(hrpPos, camPos)
+        if distSq > maxSq then continue end
+
+        local sp, vis = W2S(hrpPos)
+        if not vis then continue end
+
+        local label = d.IsBeast and CACHE.BeastText or CACHE.HumanText
+        if CONFIG.ShowDistance then
+            label = label .. " [" .. math.floor(math.sqrt(distSq)) .. "m]"
+        end
+
+        DrawingImmediate.OutlinedText(
+            V2(sp.X, sp.Y+yOff), tSize,
+            d.IsBeast and CONFIG.BeastColor or CONFIG.HumanColor,
+            1, label, true
+        )
+    end
+
+    for _, s in ipairs(ScreensCache.Screens) do
+        if not s.Part then continue end
+        local sp, vis = W2S(s.Part.Position)
+        if not vis then continue end
+        DrawingImmediate.OutlinedText(
+            V2(sp.X, sp.Y+yOff), tSize,
+            s.IsHacked and CONFIG.ScreenHackedColor or CONFIG.ScreenOKColor,
+            1, s.IsHacked and CACHE.ScreenHackedText or CACHE.ScreenOKText, true
+        )
+    end
+end)
+
+function _G.BeastESPCleanup()
+    render:Disconnect()
+    table.clear(ScreensCache.Screens)
+    PlayerCache, BeastCache = {}, {}
+    print("[Beast ESP] Unloaded — made by Factual, obviously :)")
+end
+
+print("[Beast ESP] Loaded | Toggle: "..(CONFIG.ToggleKey or "X").." | Factual was here :)")
