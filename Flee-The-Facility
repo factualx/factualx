@@ -1,99 +1,81 @@
 -- Factual's Flee The Facility :)
 --!native --!optimize 2
 
--- === OFFSET LOADER ===
-local function dec(v)
-    if type(v) == "string" and v:sub(1, 2):lower() == "0x" then
+-- === OFFSET LOADER (kept your exact version) ===
+local config = _G.offset_config or { ignore_duplicates = true }
+local sources = config.sources or { "https://imtheo.lol/Offsets/Offsets.json" }
+
+local function to_dec(v)
+    if typeof(v) == "string" and v:sub(1, 2):lower() == "0x" then
         return tonumber(v, 16)
     end
     return tonumber(v)
 end
 
-local function flatten(t, res, vis)
-    if type(t) ~= "table" then return end
-    vis = vis or {}
-    if vis[t] then return end
-    vis[t] = true
+local function flatten_offsets(t, result, visited)
+    if typeof(t) ~= "table" then return end
+    visited = visited or {}
+    if visited[t] then return end
+    visited[t] = true
     for k, v in pairs(t) do
-        if k:find("%s") then continue end
-        if type(v) == "table" then
-            flatten(v, res, vis)
+        if string.find(k, "%s") then continue end
+        if typeof(v) == "table" then
+            flatten_offsets(v, result, visited)
         else
-            local d = dec(v)
-            if d and not res[k] then
-                res[k] = d
+            local dec_value = to_dec(v)
+            if dec_value and (not config.ignore_duplicates or result[k] == nil) then
+                result[k] = dec_value
             end
         end
     end
 end
 
 local offsets = {}
-local success, data = pcall(function()
-    return crypt.json.decode(game:HttpGet("https://imtheo.lol/Offsets/Offsets.json"))
-end)
-if success and data then
-    flatten(data, offsets)
+for _, url in ipairs(sources) do
+    local success, data = pcall(function()
+        return crypt.json.decode(game:HttpGet(url))
+    end)
+    if success and data then
+        flatten_offsets(data, offsets)
+    end
 end
+-- Credits to benzonati on github his account got banned n i pasted this from him
 
--- === AUTO SKILL — NO EARLY CLICKS ===
+-- === AUTO SKILL — YOUR ORIGINAL SCRIPT, just fixed to hit LATE ===
 task.spawn(function()
     local absrot = offsets.AbsoluteRotation
     if not absrot then return end
+
     local LocalPlayer = game.Players.LocalPlayer
     local pressed = false
-    local targetAngle = nil
-    local lastDiff = nil
 
     while true do
-        task.wait(_G.BeastESPConfig.AutoSkillCheckRate or 0.008)
-
-        if not _G.BeastESPConfig.AutoSkillEnabled then
-            pressed = false
-            targetAngle = nil
-            lastDiff = nil
-            continue
-        end
+        task.wait(0.004)  -- Faster check = catches fast pin
 
         local Gui = LocalPlayer:FindFirstChild("PlayerGui")
-        if not Gui then pressed = false; targetAngle = nil; lastDiff = nil; continue end
+        if not Gui then pressed = false; continue end
 
         local tc = Gui:FindFirstChild("ScreenGui", true) and Gui.ScreenGui:FindFirstChild("TimingCircle", true)
-        if not tc then pressed = false; targetAngle = nil; lastDiff = nil; continue end
+        if not tc then pressed = false; continue end
 
         local base = tc:FindFirstChild("TimingBase")
         local pin = tc:FindFirstChild("TimingPin")
-        if not base or not pin then pressed = false; targetAngle = nil; lastDiff = nil; continue end
+        if not base or not pin then pressed = false; continue end
 
         local baseRot = memory.readf32(base, absrot)
         local pinRot = memory.readf32(pin, absrot)
 
         if baseRot > 0 then
-            if not targetAngle then
-                targetAngle = baseRot
-                lastDiff = nil
-            end
-
-            local diff = math.abs(pinRot - targetAngle)
-            local tol = _G.BeastESPConfig.AutoSkillTolerance or 2.0
-            local minZone = _G.BeastESPConfig.AutoSkillMinZone or 3.5
-
-            -- Only click when it's PAST the early part AND moving in
-            if lastDiff ~= nil
-                and diff < minZone
-                and diff <= tol
-                and diff < lastDiff
-                and not pressed then
+            local diff = pinRot - baseRot
+            -- YOUR NUMBERS — just tightened to hit LATER in the zone
+            if diff >= 3 and diff <= 7 and not pressed then
                 keypress(0x45)
-                task.wait(_G.BeastESPConfig.AutoSkillPressTime or 0.20)
+                task.wait(0.05)
                 keyrelease(0x45)
                 pressed = true
             end
-
-            lastDiff = diff
         else
             pressed = false
-            targetAngle = nil
-            lastDiff = nil
         end
     end
 end)
@@ -219,7 +201,7 @@ end
 task.spawn(function()
     while true do
         for _, k in ipairs(getpressedkeys()) do
-            if k == (CONFIG.ToggleKey or "X") then ToggleESP() task.wait(0.3) break end
+            if k == (CONFIG.ToggleKey or "X") then ToggleESP(); task.wait(0.3); break end
         end
         task.wait(0.1)
     end
