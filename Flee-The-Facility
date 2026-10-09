@@ -1,21 +1,77 @@
-_G.BeastESPConfig = _G.BeastESPConfig or {
-    Enabled         = true,
-    MaxDistance     = 300,
-    CheckRate       = 0.1,
-    ScreenCheckRate = 2.0,
-    TextSize        = 14,
-    TextOffsetY     = 16,
-    ShowDistance    = true,
-    SkipLocalPlayer = true,
-    BeastColor        = Color3.fromRGB(255, 50,  50),
-    HumanColor        = Color3.fromRGB(100, 150, 255),
-    ScreenOKColor     = Color3.fromRGB(50,  150, 255),
-    ScreenHackedColor = Color3.fromRGB(50,  255, 100),
-    ToggleKey       = "X",
-    ScreenNormal    = {r = 13, g = 105, b = 172},
-    ScreenTolerance = 5,
-}
+-- Factual's Flee The Facility :)
+--!native --!optimize 2
 
+-- === OFFSET LOADER ===
+local function dec(v)
+    if type(v) == "string" and v:sub(1, 2):lower() == "0x" then
+        return tonumber(v, 16)
+    end
+    return tonumber(v)
+end
+
+local function flatten(t, res, vis)
+    if type(t) ~= "table" then return end
+    vis = vis or {}
+    if vis[t] then return end
+    vis[t] = true
+    for k, v in pairs(t) do
+        if k:find("%s") then continue end
+        if type(v) == "table" then
+            flatten(v, res, vis)
+        else
+            local d = dec(v)
+            if d and not res[k] then
+                res[k] = d
+            end
+        end
+    end
+end
+
+local offsets = {}
+local success, data = pcall(function()
+    return crypt.json.decode(game:HttpGet("https://imtheo.lol/Offsets/Offsets.json"))
+end)
+if success and data then
+    flatten(data, offsets)
+end
+
+-- === AUTO SKILL ===
+task.spawn(function()
+    local absrot = offsets.AbsoluteRotation
+    if not absrot then return end
+    local LocalPlayer = game.Players.LocalPlayer
+    local pressed = false
+    while true do
+        task.wait(_G.BeastESPConfig.AutoSkillCheckRate or 0.016)
+        if not _G.BeastESPConfig.AutoSkillEnabled then
+            pressed = false
+            continue
+        end
+        local Gui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not Gui then pressed = false; continue end
+        local tc = Gui:FindFirstChild("ScreenGui", true) and Gui.ScreenGui:FindFirstChild("TimingCircle", true)
+        if not tc then pressed = false; continue end
+        local base = tc:FindFirstChild("TimingBase")
+        local pin = tc:FindFirstChild("TimingPin")
+        if not base or not pin then pressed = false; continue end
+        local baseRot = memory.readf32(base, absrot)
+        local pinRot = memory.readf32(pin, absrot)
+        if baseRot > 0 then
+            local diff = pinRot - baseRot
+            local tol = _G.BeastESPConfig.AutoSkillTolerance or 5
+            if diff >= -tol and diff <= tol and not pressed then
+                keypress(0x45)
+                task.wait(_G.BeastESPConfig.AutoSkillPressTime or 0.05)
+                keyrelease(0x45)
+                pressed = true
+            end
+        else
+            pressed = false
+        end
+    end
+end)
+
+-- === ESP ===
 local CONFIG     = _G.BeastESPConfig
 local Camera     = workspace.CurrentCamera
 local RunService = game:GetService("RunService")
@@ -26,23 +82,20 @@ local V2  = Vector2.new
 local W2S = function(pos) return Camera:WorldToScreenPoint(pos) end
 
 local CACHE = {
-    BeastText            = "Beast",
-    HumanText            = "Human",
-    ScreenOKText         = "OK",
-    ScreenHackedText     = "HACKED",
-    BeastPowers          = "BeastPowers",
-    PowerProgressPercent = "PowerProgressPercent",
-    HumanoidRootPart     = "HumanoidRootPart",
-    ComputerTable        = "ComputerTable",
-    Screen               = "Screen",
+    BeastText        = "Beast",
+    HumanText        = "Human",
+    ScreenOKText     = "OK",
+    ScreenHackedText = "HACKED",
+    BeastPowers      = "BeastPowers",
+    HumanoidRootPart = "HumanoidRootPart",
+    ComputerTable    = "ComputerTable",
+    Screen           = "Screen",
 }
 
 local function CheckBeastPowers(name)
     local model = workspace:FindFirstChild(name)
     if not model then return false end
-    local folder = model:FindFirstChild(CACHE.BeastPowers)
-    if not folder then return false end
-    return folder:FindFirstChild(CACHE.PowerProgressPercent) ~= nil
+    return model:FindFirstChild(CACHE.BeastPowers) ~= nil
 end
 
 local PlayerCache = {}
@@ -55,7 +108,6 @@ task.spawn(function()
         lastUpdate += dt
         if lastUpdate < CONFIG.CheckRate then continue end
         lastUpdate = 0
-
         if CONFIG.Enabled then
             local fresh = {}
             for _, obj in ipairs(workspace:GetChildren()) do
@@ -82,7 +134,7 @@ end)
 
 local ScreensCache = { Screens = {}, LastCheck = 0 }
 
-local function ColoresIguales(c1, c2, tol)
+local function SameColor(c1, c2, tol)
     if not c1 or not c2 then return false end
     return math.abs(c1.r - c2.r) <= tol
        and math.abs(c1.g - c2.g) <= tol
@@ -102,17 +154,14 @@ local function UpdateScreensCache()
     if now - ScreensCache.LastCheck < (CONFIG.ScreenCheckRate or 2.0) then return end
     ScreensCache.LastCheck = now
     table.clear(ScreensCache.Screens)
-
     local normal = CONFIG.ScreenNormal or {r=13,g=105,b=172}
     local tol    = CONFIG.ScreenTolerance or 5
-
     local function ScanScreen(ct)
         local s = ct:FindFirstChild(CACHE.Screen)
         if not s then return end
         local c = GetScreenColor(s)
-        if c then table.insert(ScreensCache.Screens, { Part = s, IsHacked = not ColoresIguales(c, normal, tol) }) end
+        if c then table.insert(ScreensCache.Screens, { Part = s, IsHacked = not SameColor(c, normal, tol) }) end
     end
-
     for _, m in ipairs(workspace:GetChildren()) do
         if m:FindFirstChild(CACHE.ComputerTable) then ScanScreen(m[CACHE.ComputerTable]) end
         for _, c in ipairs(m:GetChildren()) do if c.Name == CACHE.ComputerTable then ScanScreen(c) end end
@@ -130,7 +179,7 @@ task.spawn(function()
     end
 end)
 
-local function DistanceSquared(p1, p2)
+local function DistSq(p1, p2)
     local dx, dy, dz = p1.X-p2.X, p1.Y-p2.Y, p1.Z-p2.Z
     return dx*dx + dy*dy + dz*dz
 end
@@ -155,37 +204,24 @@ local render = RunService.Render:Connect(function()
     local maxSq  = (CONFIG.MaxDistance or 300)^2
     local tSize  = CONFIG.TextSize or 14
     local yOff   = CONFIG.TextOffsetY or 16
-
     for _, d in pairs(PlayerCache) do
         if not d.Alive then continue end
-        local hrpPos = d.HRP.Position
-        local distSq = DistanceSquared(hrpPos, camPos)
-        if distSq > maxSq then continue end
-
-        local sp, vis = W2S(hrpPos)
+        local pos = d.HRP.Position
+        local dSq = DistSq(pos, camPos)
+        if dSq > maxSq then continue end
+        local sp, vis = W2S(pos)
         if not vis then continue end
-
-        local label = d.IsBeast and CACHE.BeastText or CACHE.HumanText
+        local lbl = d.IsBeast and CACHE.BeastText or CACHE.HumanText
         if CONFIG.ShowDistance then
-            label = label .. " [" .. math.floor(math.sqrt(distSq)) .. "m]"
+            lbl = lbl .. " [" .. math.floor(math.sqrt(dSq)) .. "m]"
         end
-
-        DrawingImmediate.OutlinedText(
-            V2(sp.X, sp.Y+yOff), tSize,
-            d.IsBeast and CONFIG.BeastColor or CONFIG.HumanColor,
-            1, label, true
-        )
+        DrawingImmediate.OutlinedText(V2(sp.X, sp.Y+yOff), tSize, d.IsBeast and CONFIG.BeastColor or CONFIG.HumanColor, 1, lbl, true)
     end
-
     for _, s in ipairs(ScreensCache.Screens) do
         if not s.Part then continue end
         local sp, vis = W2S(s.Part.Position)
         if not vis then continue end
-        DrawingImmediate.OutlinedText(
-            V2(sp.X, sp.Y+yOff), tSize,
-            s.IsHacked and CONFIG.ScreenHackedColor or CONFIG.ScreenOKColor,
-            1, s.IsHacked and CACHE.ScreenHackedText or CACHE.ScreenOKText, true
-        )
+        DrawingImmediate.OutlinedText(V2(sp.X, sp.Y+yOff), tSize, s.IsHacked and CONFIG.ScreenHackedColor or CONFIG.ScreenOKColor, 1, s.IsHacked and CACHE.ScreenHackedText or CACHE.ScreenOKText, true)
     end
 end)
 
