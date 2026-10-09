@@ -35,7 +35,7 @@ if success and data then
     flatten(data, offsets)
 end
 
--- === AUTO SKILL — DIRECTION-AWARE + LATE HIT ===
+-- === AUTO SKILL — NO EARLY CLICKS ===
 task.spawn(function()
     local absrot = offsets.AbsoluteRotation
     if not absrot then return end
@@ -68,29 +68,29 @@ task.spawn(function()
         local pinRot = memory.readf32(pin, absrot)
 
         if baseRot > 0 then
-            -- Lock onto target zone when round starts
             if not targetAngle then
                 targetAngle = baseRot
                 lastDiff = nil
             end
 
             local diff = math.abs(pinRot - targetAngle)
-            local tol = _G.BeastESPConfig.AutoSkillTolerance or 2.5
+            local tol = _G.BeastESPConfig.AutoSkillTolerance or 2.0
+            local minZone = _G.BeastESPConfig.AutoSkillMinZone or 3.5
 
-            -- Only click when:
-            -- 1. Pin is getting CLOSER (moving toward target)
-            -- 2. Pin is INSIDE the tolerance zone
-            -- 3. Not clicked yet this round
-            if lastDiff ~= nil and diff < lastDiff and diff <= tol and not pressed then
+            -- Only click when it's PAST the early part AND moving in
+            if lastDiff ~= nil
+                and diff < minZone
+                and diff <= tol
+                and diff < lastDiff
+                and not pressed then
                 keypress(0x45)
-                task.wait(_G.BeastESPConfig.AutoSkillPressTime or 0.05)
+                task.wait(_G.BeastESPConfig.AutoSkillPressTime or 0.20)
                 keyrelease(0x45)
                 pressed = true
             end
 
             lastDiff = diff
         else
-            -- Reset for next round
             pressed = false
             targetAngle = nil
             lastDiff = nil
