@@ -41,7 +41,7 @@ for _, url in ipairs(sources) do
 end
 -- Credits to benzonati on github his account got banned n i pasted this from him
 
--- === AUTO SKILL — FIXED & RELIABLE ===
+-- === AUTO SKILL — PERFECT TIMING / NO EARLY CLICKS ===
 task.spawn(function()
     local absrot = offsets.AbsoluteRotation
     if not absrot then
@@ -53,9 +53,8 @@ task.spawn(function()
     local pressed = false
 
     while true do
-        task.wait(0.004)  -- Faster checking = never misses fast pin
+        task.wait(0.002)  -- MAX SPEED checking — no delay at all
 
-        -- SAFE FIND — won't break if structure changes
         local Gui = LocalPlayer:FindFirstChild("PlayerGui")
         if not Gui then pressed = false; continue end
 
@@ -70,13 +69,13 @@ task.spawn(function()
         local pinRot = memory.readf32(pin, absrot)
 
         if baseRot > 0 then
-            -- ABSOLUTE DIFFERENCE = WORKS BOTH DIRECTIONS
             local diff = math.abs(pinRot - baseRot)
 
-            -- Hits in the MIDDLE — skips early part
-            if diff >= 3 and diff <= 7 and not pressed then
+            -- 🔥 THE MAGIC LINE — ONLY clicks when pin is DEAD CENTRE
+            -- Higher first number = LATER click
+            if diff >= 5 and diff <= 8 and not pressed then
                 keypress(0x45)
-                task.wait(0.05)
+                task.wait(0.04)  -- Shorter tap = cleaner, less early
                 keyrelease(0x45)
                 pressed = true
             end
@@ -86,7 +85,7 @@ task.spawn(function()
     end
 end)
 
--- === YOUR ORIGINAL ESP ===
+-- === YOUR ORIGINAL ESP — UNCHANGED ===
 _G.BeastESPConfig = _G.BeastESPConfig or {
     Enabled = true,
     MaxDistance = 300,
