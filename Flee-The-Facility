@@ -1,17 +1,17 @@
--- Factual's Flee The Facility :)
 --!native --!optimize 2
 
--- === OFFSET LOADER ===
-local config = _G.offset_config or { ignore_duplicates = true }
-local sources = config.sources or { "https://imtheo.lol/Offsets/Offsets.json" }
-
+local config = _G.offset_config or {
+  ignore_duplicates = true
+}
+local sources = config.sources or {
+    "https://imtheo.lol/Offsets/Offsets.json",
+}
 local function to_dec(v)
-    if typeof(v) == "string" and v:sub(1, 2):lower() == "0x" then
+    if typeof(v) == "string" and v:sub(1,2):lower() == "0x" then
         return tonumber(v, 16)
     end
     return tonumber(v)
 end
-
 local function flatten_offsets(t, result, visited)
     if typeof(t) ~= "table" then return end
     visited = visited or {}
@@ -29,7 +29,6 @@ local function flatten_offsets(t, result, visited)
         end
     end
 end
-
 local offsets = {}
 for _, url in ipairs(sources) do
     local success, data = pcall(function()
@@ -39,53 +38,8 @@ for _, url in ipairs(sources) do
         flatten_offsets(data, offsets)
     end
 end
--- Credits to benzonati on github his account got banned n i pasted this from him
+--Credits to benzonati on github his account got banned n i pasted this from him
 
--- === AUTO SKILL — PERFECT TIMING / NO EARLY CLICKS ===
-task.spawn(function()
-    local absrot = offsets.AbsoluteRotation
-    if not absrot then
-        warn("[AutoSkill] Offset missing")
-        return
-    end
-
-    local LocalPlayer = game.Players.LocalPlayer
-    local pressed = false
-
-    while true do
-        task.wait(0.002)  -- MAX SPEED checking — no delay at all
-
-        local Gui = LocalPlayer:FindFirstChild("PlayerGui")
-        if not Gui then pressed = false; continue end
-
-        local tc = Gui:FindFirstChild("ScreenGui", true) and Gui.ScreenGui:FindFirstChild("TimingCircle", true)
-        if not tc then pressed = false; continue end
-
-        local base = tc:FindFirstChild("TimingBase")
-        local pin = tc:FindFirstChild("TimingPin")
-        if not base or not pin then pressed = false; continue end
-
-        local baseRot = memory.readf32(base, absrot)
-        local pinRot = memory.readf32(pin, absrot)
-
-        if baseRot > 0 then
-            local diff = math.abs(pinRot - baseRot)
-
-            -- 🔥 THE MAGIC LINE — ONLY clicks when pin is DEAD CENTRE
-            -- Higher first number = LATER click
-            if diff >= 5 and diff <= 8 and not pressed then
-                keypress(0x45)
-                task.wait(0.04)  -- Shorter tap = cleaner, less early
-                keyrelease(0x45)
-                pressed = true
-            end
-        else
-            pressed = false
-        end
-    end
-end)
-
--- === YOUR ORIGINAL ESP — UNCHANGED ===
 _G.BeastESPConfig = _G.BeastESPConfig or {
     Enabled = true,
     MaxDistance = 300,
@@ -227,7 +181,7 @@ end
 task.spawn(function()
     while true do
         for _, k in ipairs(getpressedkeys()) do
-            if k == (CONFIG.ToggleKey or "X") then ToggleESP(); task.wait(0.3); break end
+            if k == (CONFIG.ToggleKey or "X") then ToggleESP() task.wait(0.3) break end
         end
         task.wait(0.1)
     end
